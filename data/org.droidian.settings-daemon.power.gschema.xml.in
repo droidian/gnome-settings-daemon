@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema gettext-domain="@GETTEXT_PACKAGE@" id="org.droidian.settings-daemon.power" path="/org/droidian/settings-daemon/power/">
+    <key name="disable-display-wake" type="b">
+      <default>true</default>
+      <summary>Disables enabling display on wakeup from suspend</summary>
+      <description>If the display should not be woken up on resume from suspend. On a mobile device you most likely want to enable this.</description>
+    </key>
+  </schema>
+</schemalist>
