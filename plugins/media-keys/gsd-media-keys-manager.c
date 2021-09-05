@@ -102,6 +102,7 @@
 
 #define VOLUME_STEP "volume-step"
 #define VOLUME_STEP_PRECISE 2
+#define PHONE_VOLUME_STEP 20
 #define MAX_VOLUME 65536.0
 
 #define SYSTEMD_DBUS_NAME                       "org.freedesktop.login1"
@@ -150,6 +151,7 @@ typedef struct
         GvcMixerControl *volume;
         GvcMixerStream  *sink;
         GvcMixerStream  *source;
+        GvcMixerStream  *phone_stream;
         GSettings       *sound_settings;
         pa_volume_t      max_volume;
 #if HAVE_GUDEV
@@ -1434,20 +1436,26 @@ show_volume_osd (GsdMediaKeysManager *manager,
         } else {
                 new_vol = 0.0;
         }
-        icon = get_icon_name_for_volume (!GVC_IS_MIXER_SINK (stream), muted, new_vol);
-        port = gvc_mixer_stream_get_port (stream);
-        if (g_strcmp0 (gvc_mixer_stream_get_form_factor (stream), "internal") != 0 ||
-            (port != NULL &&
-             g_strcmp0 (port->port, "[OUT] Speaker") != 0 &&
-             g_strcmp0 (port->port, "[OUT] Handset") != 0 &&
-             g_strcmp0 (port->port, "analog-output-speaker") != 0 &&
-             g_strcmp0 (port->port, "analog-output") != 0)) {
-                device = gvc_mixer_control_lookup_device_from_stream (priv->volume, stream);
-                show_osd_with_max_level (manager, icon,
-                                         gvc_mixer_ui_device_get_description (device),
-                                         new_vol, max_volume, NULL);
+        if (stream == priv->phone_stream) {
+            show_osd_with_max_level (manager, "call-start-symbolic",
+                                     NULL, /* 'Phone call' would be nice, but we need to make that translatable */
+                                     new_vol, max_volume, NULL);
         } else {
-                show_osd_with_max_level (manager, icon, NULL, new_vol, max_volume, NULL);
+            icon = get_icon_name_for_volume (!GVC_IS_MIXER_SINK (stream), muted, new_vol);
+            port = gvc_mixer_stream_get_port (stream);
+            if (g_strcmp0 (gvc_mixer_stream_get_form_factor (stream), "internal") != 0 ||
+                (port != NULL &&
+                 g_strcmp0 (port->port, "[OUT] Speaker") != 0 &&
+                 g_strcmp0 (port->port, "[OUT] Handset") != 0 &&
+                 g_strcmp0 (port->port, "analog-output-speaker") != 0 &&
+                 g_strcmp0 (port->port, "analog-output") != 0)) {
+                    device = gvc_mixer_control_lookup_device_from_stream (priv->volume, stream);
+                    show_osd_with_max_level (manager, icon,
+                                             gvc_mixer_ui_device_get_description (device),
+                                             new_vol, max_volume, NULL);
+            } else {
+                    show_osd_with_max_level (manager, icon, NULL, new_vol, max_volume, NULL);
+            }
         }
 
         ca_context = gsd_application_get_ca_context (GSD_APPLICATION (manager));
@@ -1605,6 +1613,21 @@ do_sound_action (GsdMediaKeysManager *manager,
                 vol_step = g_settings_get_int (priv->settings, VOLUME_STEP);
                 norm_vol_step = PA_VOLUME_NORM * vol_step / 100;
         }
+
+        if (GVC_IS_MIXER_STREAM (priv->phone_stream)) {
+                /* Phone stream specified, use that */
+                g_debug ("Changing phone stream");
+
+                stream = priv->phone_stream;
+
+                if (type == MUTE_KEY)
+                        /* Unable to mute phone sink input */
+                        return;
+
+                vol_step = PHONE_VOLUME_STEP;
+                norm_vol_step = PA_VOLUME_NORM * vol_step / 100;
+        }
+
         /* FIXME: this is racy */
         new_vol = old_vol = gvc_mixer_stream_get_volume (stream);
         new_muted = old_muted = gvc_mixer_stream_get_is_muted (stream);
@@ -1748,6 +1771,38 @@ on_control_stream_removed (GvcMixerControl     *control,
 #if HAVE_GUDEV
 	g_hash_table_foreach_remove (priv->streams, (GHRFunc) remove_stream, GUINT_TO_POINTER (id));
 #endif
+}
+
+static void
+on_phone_stream_added (GvcMixerControl     *control,
+                       guint                id,
+                       GsdMediaKeysManager *manager)
+{
+        GsdMediaKeysManagerPrivate *priv = GSD_MEDIA_KEYS_MANAGER_GET_PRIVATE (manager);
+
+        g_return_if_fail (GVC_IS_MIXER_CONTROL (control));
+        g_return_if_fail (GSD_IS_MEDIA_KEYS_MANAGER (manager));
+
+        g_debug ("Phone stream added %d", id);
+
+        g_set_object (&priv->phone_stream,
+                      gvc_mixer_control_lookup_stream_id (priv->volume, id));
+        g_return_if_fail (priv->phone_stream);
+}
+
+static void
+on_phone_stream_removed (GvcMixerControl     *control,
+                       guint                id,
+                       GsdMediaKeysManager *manager)
+{
+        GsdMediaKeysManagerPrivate *priv = GSD_MEDIA_KEYS_MANAGER_GET_PRIVATE (manager);
+
+        g_return_if_fail (GVC_IS_MIXER_CONTROL (control));
+        g_return_if_fail (GSD_IS_MEDIA_KEYS_MANAGER (manager));
+
+        g_debug ("Phone stream removed %d", id);
+
+        g_clear_object (&priv->phone_stream);
 }
 
 static gboolean
@@ -2778,6 +2833,14 @@ initialize_volume_handler (GsdMediaKeysManager *manager)
         g_signal_connect (priv->volume,
                           "audio-device-selection-needed",
                           G_CALLBACK (audio_selection_needed),
+                          manager);
+        g_signal_connect (priv->volume,
+                          "phone-stream-added",
+                          G_CALLBACK (on_phone_stream_added),
+                          manager);
+        g_signal_connect (priv->volume,
+                          "phone-stream-removed",
+                          G_CALLBACK (on_phone_stream_removed),
                           manager);
 
         gvc_mixer_control_open (priv->volume);
