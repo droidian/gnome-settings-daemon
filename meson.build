@@ -142,6 +142,7 @@ libgvc = subproject(
   'gvc',
   default_options: [
     'static=true',
+    'with-droidian-extensions=true',
     'alsa=' + enable_alsa.to_string()
   ]
 )
