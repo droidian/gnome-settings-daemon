@@ -161,4 +161,3 @@ foreach test : tests
     timeout: test == 'Screensaver' ? 180 : 120
   )
 endforeach
-

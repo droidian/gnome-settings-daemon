@@ -41,6 +41,14 @@ typedef enum
         BACKLIGHT_BACKEND_LIBDROID,
 } BacklightBackend;
 
+#define BRIGHTNESS_MAP_SIZE 101
+
+enum backlight_scale {
+	UNKNOWN = 0,
+	LINEAR,
+	NONLINEAR
+};
+
 struct _GsdBacklight
 {
         GObject object;
@@ -50,6 +58,9 @@ struct _GsdBacklight
         gint brightness_val;
         gint brightness_target;
         gint brightness_step;
+        enum backlight_scale scale;
+        gint brightness_percent;
+        gint brightness_map[BRIGHTNESS_MAP_SIZE];
 
         uint32_t backlight_serial;
         char *backlight_connector;
@@ -198,6 +209,26 @@ gsd_backlight_udev_idle_update_cb (GsdBacklight *backlight)
         if (brightness == backlight->brightness_val)
                 return FALSE;
 
+        else if (backlight->scale == NONLINEAR)
+                backlight->brightness_percent = ABS_TO_PERCENTAGE (backlight->brightness_min, backlight->brightness_max, brightness);
+
+        /* Binary search for the closest value in the brightness map to determine brightness_percent. */
+        else {
+                gint low = 0;
+                gint mid;
+                gint high = BRIGHTNESS_MAP_SIZE - 1;
+                while (low <= high) {
+                        mid = low + (high - low) / 2;
+                        if (backlight->brightness_map[mid] == brightness)
+                                break;
+                        else if (backlight->brightness_map[mid] < brightness)
+                                low = mid + 1;
+                        else
+                                high = mid - 1;
+                }
+                backlight->brightness_percent = mid;
+        }
+
         backlight->brightness_val = brightness;
         backlight->brightness_target = brightness;
         g_object_notify_by_pspec (G_OBJECT (backlight), props[PROP_BRIGHTNESS]);
@@ -237,6 +268,24 @@ gsd_backlight_udev_uevent (GUdevClient *client, const gchar *action, GUdevDevice
 }
 
 
+/* The backlight_scale sysfs attribute is set by panel drivers */
+/* in /linux/drivers/gpu/drm/panel/ in the linux kernal.       */
+static enum backlight_scale
+gsd_backlight_parse_brightness_scale (GUdevDevice *udev_device)
+{
+        const gchar *scale = g_udev_device_get_property(udev_device, "GSD_BACKLIGHT_SCALE");
+        if (scale == NULL)
+                scale = g_udev_device_get_sysfs_attr (udev_device, "scale");
+
+        if (g_strcmp0 (scale, "linear") == 0)
+                return LINEAR;
+        else if (g_strcmp0 (scale, "non-linear") == 0)
+                return NONLINEAR;
+        else
+                return UNKNOWN;
+}
+
+
 static gboolean
 gsd_backlight_udev_init (GsdBacklight *backlight)
 {
@@ -250,13 +299,17 @@ gsd_backlight_udev_init (GsdBacklight *backlight)
 
         backlight->brightness_max = g_udev_device_get_sysfs_attr_as_int (backlight->udev_device,
                                                                          "max_brightness");
-        backlight->brightness_min = MAX (1, backlight->brightness_max * 0.01);
-
         /* If the interface has less than 100 possible values, and it is of type
          * raw, then assume that 0 does not turn off the backlight completely. */
         if (backlight->brightness_max < 99 &&
-            g_strcmp0 (g_udev_device_get_sysfs_attr (backlight->udev_device, "type"), "raw") == 0)
+            g_strcmp0 (g_udev_device_get_sysfs_attr (backlight->udev_device, "type"), "raw") == 0) {
                 backlight->brightness_min = 0;
+                backlight->scale = NONLINEAR;
+        }
+        else {
+                backlight->brightness_min = MAX (1, backlight->brightness_max * 0.01);
+                backlight->scale = gsd_backlight_parse_brightness_scale (backlight->udev_device);
+        }
 
         /* Ignore a backlight which has no steps. */
         if (backlight->brightness_min >= backlight->brightness_max) {
@@ -303,8 +356,7 @@ static void
 gsd_backlight_set_helper_return (GsdBacklight *backlight, GTask *task, gint result, const GError *error)
 {
         GTask *finished_task;
-        gint percent = ABS_TO_PERCENTAGE (backlight->brightness_min, backlight->brightness_max, result);
-
+        gint percent = backlight->brightness_percent;
         if (error)
                 g_warning ("Error executing backlight helper: %s", error->message);
 
@@ -464,7 +516,7 @@ gsd_backlight_get_brightness (GsdBacklight *backlight)
         if (backlight->builtin_display_disabled)
                 return -1;
 
-        return ABS_TO_PERCENTAGE (backlight->brightness_min, backlight->brightness_max, backlight->brightness_val);
+        return backlight->brightness_percent;
 }
 
 /**
@@ -501,8 +553,15 @@ gsd_backlight_set_brightness_val_async (GsdBacklight *backlight,
         const char *monitor;
         gint percent;
 
-        value = MIN(backlight->brightness_max, value);
-        value = MAX(backlight->brightness_min, value);
+        value = MIN(100, value);
+        value = MAX(0, value);
+
+        backlight->brightness_percent = value;
+
+        if (backlight->scale == LINEAR || backlight->scale == UNKNOWN)
+                value = backlight->brightness_map[value];
+        else
+                value = PERCENTAGE_TO_ABS (backlight->brightness_min, backlight->brightness_max, value);
 
         backlight->brightness_target = value;
 
@@ -547,9 +606,7 @@ gsd_backlight_set_brightness_val_async (GsdBacklight *backlight,
                                            -1, NULL,
                                            NULL, NULL);
 
-                        percent = ABS_TO_PERCENTAGE (backlight->brightness_min,
-                                                     backlight->brightness_max,
-                                                     backlight->brightness_target);
+                        percent = backlight->brightness_percent;
                         g_task_return_int (task, percent);
                 } else {
                         task_data = g_new0 (BacklightHelperData, 1);
@@ -609,7 +666,7 @@ gsd_backlight_set_brightness_async (GsdBacklight *backlight,
 {
         /* Overflow/underflow is handled by gsd_backlight_set_brightness_val_async. */
         gsd_backlight_set_brightness_val_async (backlight,
-                                                PERCENTAGE_TO_ABS (backlight->brightness_min, backlight->brightness_max, percent),
+                                                percent,
                                                 cancellable,
                                                 callback,
                                                 user_data);
@@ -647,7 +704,7 @@ gsd_backlight_step_up_async (GsdBacklight *backlight,
         gint value;
 
         /* Overflows are handled by gsd_backlight_set_brightness_val_async. */
-        value = backlight->brightness_target + backlight->brightness_step;
+        value = backlight->brightness_percent + backlight->brightness_step;
 
         gsd_backlight_set_brightness_val_async (backlight,
                                                 value,
@@ -693,7 +750,7 @@ gsd_backlight_step_down_async (GsdBacklight *backlight,
         gint value;
 
         /* Underflows are handled by gsd_backlight_set_brightness_val_async. */
-        value = backlight->brightness_target - backlight->brightness_step;
+        value = backlight->brightness_percent - backlight->brightness_step;
 
         gsd_backlight_set_brightness_val_async (backlight,
                                                 value,
@@ -754,7 +811,7 @@ gsd_backlight_cycle_up_async (GsdBacklight *backlight,
                                              user_data);
         else
                 gsd_backlight_set_brightness_val_async (backlight,
-                                                        backlight->brightness_min,
+                                                        0,
                                                         cancellable,
                                                         callback,
                                                         user_data);
@@ -911,6 +968,7 @@ gsd_backlight_initable_init (GInitable       *initable,
         GsdDisplayConfig *display_config =
                 gnome_settings_bus_get_display_config_proxy ();
         GError *logind_error = NULL;
+        gint brightness_range;
 
         if (cancellable != NULL) {
                 g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
@@ -1011,10 +1069,30 @@ gsd_backlight_initable_init (GInitable       *initable,
         return FALSE;
 
 found:
+        brightness_range = backlight->brightness_max - backlight->brightness_min;
         backlight->brightness_target = backlight->brightness_val;
-        backlight->brightness_step = MAX(backlight->brightness_step, BRIGHTNESS_STEP_AMOUNT(backlight->brightness_max - backlight->brightness_min + 1));
+        backlight->brightness_step = MAX(backlight->brightness_step, BRIGHTNESS_STEP_AMOUNT(brightness_range + 1));
 
         g_debug ("Step size for backlight is %i.", backlight->brightness_step);
+
+        if (backlight->scale == NONLINEAR) {
+                backlight->brightness_percent = ABS_TO_PERCENTAGE (backlight->brightness_min,
+                                                                   backlight->brightness_max,
+                                                                   backlight->brightness_val);
+        }
+        /* Populate backlight brightness curve array, scaled to be bounded by the min and max brightness */
+        else {
+                gint i;
+                gboolean match_found = FALSE;
+                for (i = 0; i < BRIGHTNESS_MAP_SIZE; i++) {
+                        backlight->brightness_map[i] = backlight->brightness_min +
+                                                       clutter_ease_cubic_bezier(i, 100, 0.1, 0.05, 0.87, 0.12) * brightness_range;
+                        if (backlight->brightness_map[i] >= backlight->brightness_val && match_found == FALSE) {
+                                backlight->brightness_percent = i;
+                                match_found = TRUE;
+                        }
+                }
+        }
 
         return TRUE;
 }
@@ -1070,6 +1148,7 @@ gsd_backlight_init (GsdBacklight *backlight)
         backlight->brightness_max = -1;
         backlight->brightness_val = -1;
         backlight->brightness_step = 1;
+        backlight->brightness_percent = -1;
 
 #ifdef __linux__
         backlight->active_task = NULL;
