@@ -35,6 +35,7 @@ gint gsd_backlight_get_target_brightness (GsdBacklight         *backlight);
 
 void gsd_backlight_set_brightness_async  (GsdBacklight         *backlight,
                                           gint                  percentage,
+                                          gboolean              save,
                                           GCancellable         *cancellable,
                                           GAsyncReadyCallback   callback,
                                           gpointer              user_data);
