@@ -115,6 +115,7 @@ polkit_gobject_dep = dependency('polkit-gobject-1', version: '>= 0.114')
 upower_glib_dep = dependency('upower-glib', version: '>= 0.99.12')
 x11_dep = dependency('x11')
 xfixes_dep = dependency('xfixes', version: '>= 6.0')
+libdroid_dep = dependency('libdroid-0')
 
 enable_systemd = get_option('systemd')
 enable_elogind = get_option('elogind')

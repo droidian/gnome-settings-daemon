@@ -21,6 +21,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include <libdroid/leds.h>
+
 #include "gnome-settings-bus.h"
 #include "gsd-backlight.h"
 #include "gpm-common.h"
@@ -36,6 +38,7 @@ typedef enum
         BACKLIGHT_BACKEND_NONE = 0,
         BACKLIGHT_BACKEND_UDEV,
         BACKLIGHT_BACKEND_MUTTER,
+        BACKLIGHT_BACKEND_LIBDROID,
 } BacklightBackend;
 
 struct _GsdBacklight
@@ -51,6 +54,7 @@ struct _GsdBacklight
         uint32_t backlight_serial;
         char *backlight_connector;
 
+        DroidLeds *droid_leds;
         BacklightBackend backend;
 
 #ifdef __linux__
@@ -512,6 +516,23 @@ gsd_backlight_set_brightness_val_async (GsdBacklight *backlight,
         }
 
 #ifdef __linux__
+        if (backlight->backend == BACKLIGHT_BACKEND_LIBDROID) {
+                if (droid_leds_set_backlight (backlight->droid_leds, value, TRUE)) {
+                    backlight->brightness_val = value;
+                    g_object_notify_by_pspec (G_OBJECT (backlight), props[PROP_BRIGHTNESS]);
+
+                    g_task_return_int (task, gsd_backlight_get_brightness (backlight));
+                    g_object_unref (task);
+                } else {
+                    g_task_return_new_error (task, GSD_POWER_MANAGER_ERROR,
+                                             GSD_POWER_MANAGER_ERROR_FAILED,
+                                             "libdroid backend was unable to set brightness");
+                    g_object_unref (task);
+                }
+
+                return;
+        }
+
         if (backlight->backend == BACKLIGHT_BACKEND_UDEV) {
                 BacklightHelperData *task_data;
 
@@ -844,6 +865,7 @@ update_mutter_backlight (GsdBacklight *backlight)
                         }
                         break;
                 case BACKLIGHT_BACKEND_UDEV:
+                case BACKLIGHT_BACKEND_LIBDROID:
                         break;
                 }
         }
@@ -916,6 +938,21 @@ gsd_backlight_initable_init (GInitable       *initable,
         maybe_update_mutter_backlight (backlight);
 
 #ifdef __linux__
+        g_autoptr (GError) libdroid_err = NULL;
+        backlight->droid_leds = droid_leds_new (&libdroid_err);
+        if (!libdroid_err && droid_leds_is_kind_supported (backlight->droid_leds, DROID_LEDS_KIND_BACKLIGHT)) {
+            backlight->backend = BACKLIGHT_BACKEND_LIBDROID;
+            backlight->brightness_val = MAX (10, droid_leds_get_backlight (backlight->droid_leds));
+            backlight->brightness_min = 10;
+            backlight->brightness_max = 255;
+
+            /* Rather unorthodox here, but ensure we reset the backlight */
+            droid_leds_set_backlight (backlight->droid_leds, backlight->brightness_val, FALSE);
+            goto found;
+        } else {
+            g_clear_object (&backlight->droid_leds);
+        }
+
         backlight->logind_proxy =
                 g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
                                                0,
@@ -990,6 +1027,7 @@ gsd_backlight_finalize (GObject *object)
 #ifdef __linux__
         g_assert (backlight->active_task == NULL);
         g_assert (g_queue_is_empty (&backlight->tasks));
+        g_clear_object (&backlight->droid_leds);
         g_clear_object (&backlight->logind_proxy);
         g_clear_pointer (&backlight->backlight_connector, g_free);
         g_clear_object (&backlight->udev);
