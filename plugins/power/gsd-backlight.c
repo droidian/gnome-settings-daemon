@@ -906,6 +906,12 @@ gsd_backlight_initable_init (GInitable       *initable,
         maybe_update_mutter_backlight (backlight);
 
 #ifdef __linux__
+        /* Try finding a udev device. */
+        if (gsd_backlight_udev_init (backlight)) {
+                g_assert (backlight->backend == BACKLIGHT_BACKEND_UDEV);
+                goto found;
+        }
+
         backlight->droid_leds = droid_leds_new ();
         if (droid_leds_is_kind_supported (backlight->droid_leds, DROID_LEDS_KIND_BACKLIGHT)) {
             backlight->backend = BACKLIGHT_BACKEND_LIBDROID;
@@ -956,12 +962,6 @@ gsd_backlight_initable_init (GInitable       *initable,
         if (logind_error) {
                 g_warning ("No logind found: %s", logind_error->message);
                 g_error_free (logind_error);
-        }
-
-        /* Try finding a udev device. */
-        if (gsd_backlight_udev_init (backlight)) {
-                g_assert (backlight->backend == BACKLIGHT_BACKEND_UDEV);
-                goto found;
         }
 #endif /* __linux__ */
 
