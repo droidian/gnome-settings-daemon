@@ -970,8 +970,9 @@ gsd_backlight_initable_init (GInitable       *initable,
         maybe_update_mutter_backlight (backlight);
 
 #ifdef __linux__
-        backlight->droid_leds = droid_leds_new ();
-        if (droid_leds_is_kind_supported (backlight->droid_leds, DROID_LEDS_KIND_BACKLIGHT)) {
+        g_autoptr (GError) libdroid_err = NULL;
+        backlight->droid_leds = droid_leds_new (&libdroid_err);
+        if (!libdroid_err && droid_leds_is_kind_supported (backlight->droid_leds, DROID_LEDS_KIND_BACKLIGHT)) {
             backlight->backend = BACKLIGHT_BACKEND_LIBDROID;
             backlight->brightness_val = MAX (10, droid_leds_get_backlight (backlight->droid_leds));
             backlight->brightness_min = 10;
