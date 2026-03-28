@@ -1,3 +1,11 @@
+gnome-settings-daemon (50.0-2) unstable; urgency=medium
+
+  * Team upload
+  * d/rules: Extend test timeouts, hopefully resolving FTBFS on slower
+    architectures such as riscv64 and loong64
+
+ -- Simon McVittie <smcv@debian.org>  Sat, 28 Mar 2026 14:12:38 +0000
+
 gnome-settings-daemon (50.0-1) unstable; urgency=medium
 
   * Team upload
