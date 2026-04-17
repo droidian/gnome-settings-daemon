@@ -127,7 +127,7 @@ foreach plugin: all_plugins
         endif
         unit_conf.set('plugin_gate_units_section', '\n'.join(gate_unit_section))
 
-        if enable_systemd
+        if enable_systemd_units or enable_systemd
             configure_file(
                 input: 'gsd.service.in',
                 output: user_service,
@@ -140,17 +140,6 @@ foreach plugin: all_plugins
                 configuration: unit_conf,
                 install_dir: systemd_userunitdir
             )
-
-            # Wipe out old target names if our prefix differes from the
-            # systemd one, i.e. we are probably in a virtual environment and
-            # may be picking up old units from a system installation.
-            # This saves a lot of pain when running a new g-s-d inside
-            # jhbuild on an old host.
-            # TODO: Should be deleted once we can assume developers have 3.38
-            #       installed on their machines.
-            if gsd_prefix != systemd_dep.get_variable(pkgconfig: 'prefix')
-                meson.add_install_script('sh', '-c', 'ln -vfs /dev/null "${DESTDIR:-}$1"', 'sh', systemd_userunitdir / 'gsd-@0@.target'.format(plugin_name))
-            endif
 
             foreach target: gates_all
                 meson.add_install_script('meson-add-wants.sh', systemd_userunitdir, target + '.wants/', user_service)
