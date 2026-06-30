@@ -125,7 +125,6 @@ ldsm_mount_has_trash (const char *path)
                 mount_uses_user_trash = TRUE;
         }
 
-        g_free (user_data_attr_id_fs);
         g_free (path_attr_id_fs);
 
         /* I can't think of a better way to find out if a volume has any trash. Any suggestions? */
@@ -201,8 +200,10 @@ examine_callback (NotifyNotification *n,
         g_assert (action != NULL);
         g_assert (strcmp (action, "examine") == 0);
 
-        commandline = g_strconcat (g_app_info_get_executable (G_APP_INFO (data->disk_analyzer_app)),
-                                   data->path, NULL);
+        commandline = g_strjoin (" ",
+                                 g_app_info_get_executable (G_APP_INFO (data->disk_analyzer_app)),
+                                 data->path,
+                                 NULL);
 
         g_debug ("Running %s", commandline);
         app_info = g_app_info_create_from_commandline (commandline,
@@ -1100,6 +1101,7 @@ gsd_ldsm_clean (void)
                 g_source_remove (ldsm_timeout_id);
         ldsm_timeout_id = 0;
 
+        g_free (user_data_attr_id_fs);
         g_clear_pointer (&ldsm_notified_hash, g_hash_table_destroy);
         g_clear_object (&ldsm_monitor);
         g_clear_object (&settings);
