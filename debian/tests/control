@@ -1,5 +1,8 @@
 # compiles g-s-d from source, but runs mutter and gnome-session from the host
 Test-Command: make -f debian/rules override_dh_auto_test
-Features: test-name=integration-tests
-Depends: @builddeps@
-Restrictions: build-needed
+Features:
+ test-name=integration-tests,
+Depends:
+ @builddeps@,
+Restrictions:
+ build-needed,

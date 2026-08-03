@@ -1,5 +1,7 @@
 ---
-Bug-Database: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/issues
-Bug-Submit: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/issues/new
+Archive: GNOME
+Bug-Database: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/work_items
+Bug-Submit: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/work_items/new
 Repository: https://gitlab.gnome.org/GNOME/gnome-settings-daemon.git
 Repository-Browse: https://gitlab.gnome.org/GNOME/gnome-settings-daemon
+Security-Contact: https://gitlab.gnome.org/Teams/Releng/security
