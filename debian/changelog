@@ -1,8 +1,9 @@
-gnome-settings-daemon (51~beta-1) UNRELEASED; urgency=medium
+gnome-settings-daemon (51~beta-1) unstable; urgency=medium
 
   * New upstream release
+  * Update debhelper-compat to 14
 
- -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 03 Aug 2026 12:50:03 +0200
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 03 Aug 2026 12:59:46 +0200
 
 gnome-settings-daemon (50.1-1) unstable; urgency=medium
 
