@@ -1,3 +1,12 @@
+===============
+Version 51.beta
+===============
+- Translation updates
+
+Usb-protection:
+- Refactors and improvements
+- Rely on newer gnome-session for active session tracking
+
 ================
 Version 51.alpha
 ================
