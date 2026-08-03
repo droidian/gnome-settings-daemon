@@ -5,7 +5,7 @@ Uploaders: Amin Bandali <bandali@ubuntu.com>,
            Jeremy Bícha <jbicha@ubuntu.com>,
            Laurent Bigonville <bigon@debian.org>,
            Marco Trevisan (Treviño) <marco@ubuntu.com>
-Build-Depends: debhelper-compat (= 13),
+Build-Depends: debhelper-compat (= 14),
                dh-exec,
                dh-sequence-gnome,
                gnome-session-bin <!nocheck>,
@@ -58,8 +58,6 @@ Depends: default-logind [linux-any] | logind [linux-any],
          gsettings-desktop-schemas (>= 46~beta),
          libspa-0.2-bluetooth | pulseaudio-module-bluetooth,
          pipewire-audio | pulseaudio,
-         ${misc:Depends},
-         ${shlibs:Depends}
 Recommends: iio-sensor-proxy,
             pipewire-audio,
             pkexec,
@@ -86,7 +84,6 @@ Description: daemon handling the GNOME session settings
 
 Package: gnome-settings-daemon-common
 Architecture: all
-Depends: ${misc:Depends}
 Provides: gnome-settings-daemon-schemas (= ${source:Version})
 Breaks: gdm (<< 49~alpha.1),
         gnome-initial-setup (<< 49~alpha),
@@ -105,7 +102,6 @@ Section: libdevel
 Architecture: any
 Multi-Arch: same
 Depends: libglib2.0-dev,
-         ${misc:Depends}
 Description: Headers for building applications communicating with gnome-settings-daemon
  This package contains header files required to build applications that
  communicate with the GNOME settings daemon over D-Bus.
