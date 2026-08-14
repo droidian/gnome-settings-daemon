@@ -1,0 +1,36 @@
+From: =?utf-8?b?Ik1hcmNvIFRyZXZpc2FuIChUcmV2acOxbyki?= <mail@3v1n0.net>
+Date: Fri, 14 Aug 2026 16:20:30 +0200
+Subject: tests: Fix Backlight property type in mutter mock
+
+The org.gnome.Mutter.DisplayConfig Backlight property is declared as
+(uaa{sv}), a struct of (serial, backlights array).
+The mutter mock initialized it with a bare aa{sv} array, so gsd-power's
+proxy logged:
+
+  Received property Backlight with type aa{sv} does not match expected
+  type (uaa{sv}) in the expected interface
+
+Wrap the initial value in the same (serial, array) struct that
+SetBacklight() and MockSetBacklight() already use.
+
+Origin: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/merge_requests/489
+---
+ plugins/power/dbusmock-templates/mutter.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/plugins/power/dbusmock-templates/mutter.py b/plugins/power/dbusmock-templates/mutter.py
+index e092fe6..de870f8 100644
+--- a/plugins/power/dbusmock-templates/mutter.py
++++ b/plugins/power/dbusmock-templates/mutter.py
+@@ -73,7 +73,10 @@ def load(mock, parameters):
+     mock.serial = 1
+     mock.backlights = {}
+ 
+-    mock.AddProperty(MAIN_IFACE, 'Backlight', backlights_to_dbus({}))
++    mock.AddProperty(MAIN_IFACE, 'Backlight', dbus.Struct(
++        (dbus.UInt32(mock.serial), backlights_to_dbus({})),
++        signature='uaa{sv}',
++    ))
+     mock.AddProperty(MAIN_IFACE, 'PowerSaveMode', dbus.Int32(0))
+     mock.AddProperty(MAIN_IFACE, 'HasExternalMonitor', True)
+ 

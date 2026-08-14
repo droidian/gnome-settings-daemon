@@ -1,0 +1,60 @@
+From: =?utf-8?b?Ik1hcmNvIFRyZXZpc2FuIChUcmV2acOxbyki?= <mail@3v1n0.net>
+Date: Fri, 14 Aug 2026 16:00:45 +0200
+Subject: tests: Make mock logind report the session as active
+
+Since GNOME/gnome-session@dc497507e, gsm-systemd no longer queries
+libsystemd directly for the session's active state.
+Instead it finds the graphical session id via libsystemd on the host,
+looks it up on the login1 service with GetSession(), and reads the
+"Active" property from the returned object to decide whether the session
+is active.
+
+Our mock logind implements GetSession() by simply returning the object
+path "/org/freedesktop/login1/session/<id>" without creating the object
+behind it. As a result gnome-session's proxy fails to fetch the "Active"
+property, the session is treated as inactive, and SessionIsActive on
+org.gnome.SessionManager stays false.
+
+The power plugin honors this and refuses idle mode transitions
+("ignoring state transition to blank as inactive"), so the screensaver
+blank tests time out waiting for the screen to blank.
+
+We cannot predict which host session id gnome-session will discover, so
+override GetSession() to lazily create an active session object for
+whatever id is requested and return its path. This makes gnome-session
+consider the session active again, as the tests expect.
+
+Origin: https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/merge_requests/489
+---
+ tests/gsdtestcase.py | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/tests/gsdtestcase.py b/tests/gsdtestcase.py
+index ce75778..10b4629 100644
+--- a/tests/gsdtestcase.py
++++ b/tests/gsdtestcase.py
+@@ -287,6 +287,24 @@ class GSDTestCase(DBusTestCase):
+             'self.props["org.freedesktop.login1.Manager"]["OnExternalPower"] = args[0]'
+         )
+ 
++        # gnome-session (gsm-systemd) finds the graphical session id via
++        # libsystemd on the *host*, then looks it up on this (mocked) login1
++        # service via GetSession() and reads the returned object's "Active"
++        # property to decide whether the session is active (SessionIsActive).
++        #
++        # Since we can't predict which host session id gnome-session will find,
++        # override GetSession() so that it lazily creates an active session
++        # object for whatever id is requested, and returns its path. This makes
++        # gnome-session consider the session active, which several tests rely on.
++        self.logind_obj.AddMethod(
++            'org.freedesktop.login1.Manager', 'GetSession', 's', 'o',
++            'session_path = "/org/freedesktop/login1/session/" + args[0]\n'
++            'if session_path not in objects:\n'
++            '    self.AddSession(args[0], "seat0", %d, "%s", True)\n'
++            'ret = session_path'
++            % (os.getuid(), os.environ.get('USER', 'user'))
++        )
++
+     def stop_logind(self):
+         '''stop mock logind'''
+ 

@@ -1,1 +1,4 @@
 debian/01_debianize_xrdb.patch
+tests-Force-C-locale-by-unsetting-LC_ALL.patch
+tests-Make-mock-logind-report-the-session-as-active.patch
+tests-Fix-Backlight-property-type-in-mutter-mock.patch
